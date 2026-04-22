@@ -1,5 +1,5 @@
 /**
- * Retlify AI API Routes — v3 (All-Free Edition)
+ * Retlify AI API Routes - v3 (All-Free Edition)
  * ===============================================
  * Mounts at /api/ai
  *
@@ -28,11 +28,13 @@ const behavior        = require('../ai/userBehaviorService');
 const cache           = require('../ai/cacheService');
 const translator      = require('../utils/translator');
 const { runProductStudio }   = require('../ai/productStudioService');
-const { generateImages }     = require('../ai/imageGenerationService');
+// NOTE: generateImages is imported via productStudioService; importing it here
+// also created a name collision with the `generateImages` field destructured
+// from req.body inside /product-studio.
 const { generateBatch }      = require('../ai/pollinationsService');
 const { upload, processImages, handleUploadError } = require('../middleware/upload');
 
-/* ── Rate limits ─────────────────────────────────────────── */
+/* -- Rate limits -------------------------------------------- */
 const chatLimit   = rateLimit({ windowMs: 60*1000, max: 20, message: { error: 'Too many requests' } });
 const genLimit    = rateLimit({ windowMs: 60*1000, max: 10, message: { error: 'Too many requests' } });
 const trackLimit  = rateLimit({ windowMs: 60*1000, max: 60, message: { error: 'Too many requests' } });
@@ -42,7 +44,7 @@ function getUserId(req) {
   return req.user?.id || req.headers['x-user-id'] || req.body?.userId || null;
 }
 
-/* ── Health ────────────────────────────────────────────────── */
+/* -- Health -------------------------------------------------- */
 router.get('/health', (req, res) => {
   res.json({
     status:   'ok',
@@ -56,20 +58,22 @@ router.get('/health', (req, res) => {
   });
 });
 
-/* ── Search Suggestions ───────────────────────────────────── */
+/* -- Search Suggestions ------------------------------------- */
 router.get('/search/suggest', async (req, res) => {
   try {
     const { q = '', city = '', userId: qUserId = '' } = req.query;
     const userId = getUserId(req) || qUserId;
     if (!q.trim()) {
       const trending    = getTrendingSearches(city);
-      const userProfile = userId ? behavior.getProfile(userId) : null;
+      // FIX: behavior.getProfile is async - await it (was previously a Promise)
+      const userProfile = userId ? await behavior.getProfile(userId) : null;
       return res.json({ suggestions: [], trending, recentSearches: userProfile?.recentSearches || [], intent: null });
     }
     const { translated }  = await translateQuery(q);
     const corrected       = correctTypos(translated);
     const intent          = detectIntent(corrected);
-    const userProfile     = userId ? behavior.getProfile(userId) : null;
+    // FIX: behavior.getProfile is async - await it (was previously a Promise)
+    const userProfile     = userId ? await behavior.getProfile(userId) : null;
     const userContext     = { city, userId, recentSearches: userProfile?.recentSearches || [], topCategories: userProfile?.topCategories || [] };
     const suggestions     = await getAISuggestions(corrected, userContext);
     const trending        = getTrendingSearches(city);
@@ -81,7 +85,7 @@ router.get('/search/suggest', async (req, res) => {
   }
 });
 
-/* ── Search Parse ─────────────────────────────────────────── */
+/* -- Search Parse -------------------------------------------- */
 router.post('/search/parse', async (req, res) => {
   try {
     const { query = '', city = '' } = req.body;
@@ -94,7 +98,7 @@ router.post('/search/parse', async (req, res) => {
   }
 });
 
-/* ── Search Enrich ────────────────────────────────────────── */
+/* -- Search Enrich ------------------------------------------- */
 router.post('/search/enrich', async (req, res) => {
   try {
     const { query = '', results = [] } = req.body;
@@ -110,7 +114,7 @@ router.post('/search/enrich', async (req, res) => {
   }
 });
 
-/* ── Search Rank ──────────────────────────────────────────── */
+/* -- Search Rank --------------------------------------------- */
 router.post('/search/rank', async (req, res) => {
   try {
     const { query = '', results = [] } = req.body;
@@ -125,7 +129,7 @@ router.post('/search/rank', async (req, res) => {
   }
 });
 
-/* ── Chatbot ──────────────────────────────────────────────── */
+/* -- Chatbot ------------------------------------------------- */
 router.post('/chat', chatLimit, async (req, res) => {
   try {
     const { messages = [], mode = 'customer', context = {} } = req.body;
@@ -143,7 +147,7 @@ router.post('/chat', chatLimit, async (req, res) => {
   }
 });
 
-/* ── Product Description Generator ──────────────────────── */
+/* -- Product Description Generator ------------------------- */
 router.post('/describe', genLimit, async (req, res) => {
   try {
     const { productName, category, features = [], language = 'en' } = req.body;
@@ -155,7 +159,7 @@ router.post('/describe', genLimit, async (req, res) => {
   }
 });
 
-/* ── AI Insights ──────────────────────────────────────────── */
+/* -- AI Insights --------------------------------------------- */
 router.post('/insights', async (req, res) => {
   try {
     const { city = '', categories = [], searchLogs = [], salesData = null } = req.body;
@@ -167,7 +171,7 @@ router.post('/insights', async (req, res) => {
   }
 });
 
-/* ── Translation ──────────────────────────────────────────── */
+/* -- Translation --------------------------------------------- */
 router.post('/translate', async (req, res) => {
   try {
     const { query = '' } = req.body;
@@ -179,7 +183,7 @@ router.post('/translate', async (req, res) => {
   }
 });
 
-/* ── User Behavior Tracking ──────────────────────────────── */
+/* -- User Behavior Tracking --------------------------------- */
 router.post('/user/track', trackLimit, (req, res) => {
   try {
     const userId = getUserId(req) || req.body.userId;
@@ -199,7 +203,7 @@ router.post('/user/track', trackLimit, (req, res) => {
   }
 });
 
-/* ── Batch Sync ───────────────────────────────────────────── */
+/* -- Batch Sync ---------------------------------------------- */
 router.post('/user/sync', trackLimit, (req, res) => {
   try {
     const userId = getUserId(req) || req.body.userId;
@@ -212,12 +216,13 @@ router.post('/user/sync', trackLimit, (req, res) => {
   }
 });
 
-/* ── User Profile ─────────────────────────────────────────── */
-router.get('/user/profile', (req, res) => {
+/* -- User Profile -------------------------------------------- */
+router.get('/user/profile', async (req, res) => {
   try {
     const userId = getUserId(req) || req.query.userId;
     if (!userId) return res.status(400).json({ error: 'userId required' });
-    const profile = behavior.getProfile(userId);
+    // FIX: behavior.getProfile is async - handler must be async and await
+    const profile = await behavior.getProfile(userId);
     if (!profile) return res.json({ userId, isEmpty: true });
     res.json(profile);
   } catch (err) {
@@ -225,7 +230,7 @@ router.get('/user/profile', (req, res) => {
   }
 });
 
-/* ── Recommendations ──────────────────────────────────────── */
+/* -- Recommendations ----------------------------------------- */
 router.post('/recommendations', async (req, res) => {
   try {
     const { city = '', query = '' } = req.body;
@@ -238,7 +243,7 @@ router.post('/recommendations', async (req, res) => {
   }
 });
 
-/* ── Trending ─────────────────────────────────────────────── */
+/* -- Trending ------------------------------------------------ */
 router.get('/recommendations/trending', async (req, res) => {
   try {
     const { city = '', limit = '6' } = req.query;
@@ -249,26 +254,29 @@ router.get('/recommendations/trending', async (req, res) => {
   }
 });
 
-/* ── Trend Detection ──────────────────────────────────────── */
+/* -- Trend Detection ----------------------------------------- */
 router.post('/trends/detect', async (req, res) => {
   try {
     const { city = '' } = req.body;
-    const alerts = detectRisingTrends(city);
-    const stats  = behavior.getGlobalSearchStats();
+    // FIX: both calls are async - were returning unresolved Promises
+    const [alerts, stats] = await Promise.all([
+      detectRisingTrends(city),
+      behavior.getGlobalSearchStats(),
+    ]);
     res.json({ alerts, stats, city: city || 'India', detectedAt: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ error: 'Trend detection failed' });
   }
 });
 
-/* ── Cache Stats ──────────────────────────────────────────── */
+/* -- Cache Stats --------------------------------------------- */
 router.get('/cache/stats', (req, res) => {
   res.json(cache.stats());
 });
 
-/* ──────────────────────────────────────────────────────────── */
-/*  AI PRODUCT STUDIO  (v3 — Pollinations-powered)             */
-/* ──────────────────────────────────────────────────────────── */
+/* ------------------------------------------------------------ */
+/*  AI PRODUCT STUDIO  (v3 - Pollinations-powered)             */
+/* ------------------------------------------------------------ */
 
 // POST /api/ai/product-studio
 router.post(
@@ -320,7 +328,7 @@ router.get('/product-studio/providers', (req, res) => {
   res.json({
     openrouter:      !!process.env.OPENROUTER_API_KEY,
     imageGen:        'pollinations',  // always available
-    pollinationsKey: false,           // no key required — fully free
+    pollinationsKey: false,           // no key required - fully free
     placeholderMode: false,           // Pollinations is always active
     safetyCheck:     'local',         // built-in, no external API
     freeMode:        true,
@@ -330,7 +338,7 @@ router.get('/product-studio/providers', (req, res) => {
 // POST /api/generate-images
 // Simple, direct image generation endpoint.
 // Body: { prompt: string }
-// Returns: { images: string[] }  — array of 4 Pollinations image URLs
+// Returns: { images: string[] }  - array of 4 Pollinations image URLs
 const imgGenLimit = rateLimit({ windowMs: 60*1000, max: 15, message: { error: 'Too many image requests. Max 15/min.' } });
 
 router.post('/generate-images', imgGenLimit, async (req, res) => {

@@ -1,0 +1,70 @@
+# Render.com blueprint - one-click deploy from Git.
+# https://render.com/docs/blueprint-spec
+#
+# Deploy steps:
+#   1. Push this repo to GitHub
+#   2. In Render dashboard -> New -> Blueprint -> select repo
+#   3. Render reads this file, provisions: web service + Redis instance
+#   4. Set MONGO_URI, RESEND_API_KEY, etc. in the web service env
+#   5. Deploy. Autoscaling is configured below.
+
+services:
+  - type: web
+    name: retlify-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: cd backend && npm ci --omit=dev
+    startCommand: cd backend && node cluster.js
+    healthCheckPath: /api/health
+
+    scaling:
+      minInstances: 2
+      maxInstances: 5
+      targetCPUPercent: 70
+      targetMemoryPercent: 75
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: WORKERS
+        value: 2
+      - key: MONGO_POOL_SIZE
+        value: 50
+      - key: AI_OPENROUTER_CONCURRENCY
+        value: 20
+      - key: AI_POLLINATIONS_CONCURRENCY
+        value: 15
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: retlify-redis
+          property: connectionString
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: TO_EMAIL
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://retlify.com
+
+  - type: keyvalue
+    name: retlify-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []

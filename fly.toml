@@ -1,0 +1,53 @@
+# Fly.io config - fly.io/docs/reference/configuration
+#
+# Deploy steps:
+#   1. Install flyctl: curl -L https://fly.io/install.sh | sh
+#   2. fly auth login
+#   3. fly launch --no-deploy
+#   4. fly redis create
+#   5. fly secrets set MONGO_URI=... JWT_ACCESS_SECRET=... RESEND_API_KEY=...
+#   6. fly deploy
+#   7. fly scale count 2
+
+app = "retlify-api"
+primary_region = "sin"
+kill_signal    = "SIGTERM"
+kill_timeout   = "30s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV                    = "production"
+  PORT                        = "5000"
+  WORKERS                     = "2"
+  MONGO_POOL_SIZE             = "50"
+  AI_OPENROUTER_CONCURRENCY   = "20"
+  AI_POLLINATIONS_CONCURRENCY = "15"
+
+[http_service]
+  internal_port        = 5000
+  force_https          = true
+  auto_stop_machines   = "off"
+  auto_start_machines  = true
+  min_machines_running = 2
+  processes            = ["app"]
+
+  [http_service.concurrency]
+    type        = "requests"
+    hard_limit  = 250
+    soft_limit  = 200
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/api/health"
+    protocol     = "http"
+    timeout      = "5s"
+
+[[vm]]
+  size     = "shared-cpu-2x"
+  memory   = "1gb"
+  cpu_kind = "shared"
+  cpus     = 2
